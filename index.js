@@ -139,6 +139,23 @@ function initializeWhatsApp() {
 }
 
 /**
+ * Retry WhatsApp initialization
+ */
+ipcMain.handle('retry-whatsapp', async () => {
+  try {
+    if (whatsappClient) {
+      sendStatus('processing', '🔄 Restarting WhatsApp client...');
+      await whatsappClient.destroy();
+      whatsappClient = null;
+    }
+    initializeWhatsApp();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+/**
  * Send status message to renderer process
  */
 function sendStatus(type, message, data = {}) {

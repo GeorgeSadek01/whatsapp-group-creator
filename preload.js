@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Configuration management
   getConfig: () => ipcRenderer.invoke('get-config'),
   updateConfig: (path, value) => ipcRenderer.invoke('update-config', { path, value }),
+  retryWhatsApp: () => ipcRenderer.invoke('retry-whatsapp'),
 
   // File operations
   openCSVFile: () => ipcRenderer.invoke('open-csv-file'),

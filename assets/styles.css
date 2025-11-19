@@ -264,6 +264,17 @@ body {
   margin-top: 16px;
 }
 
+/* QR Loading and Controls */
+.qr-loading {
+  text-align: center;
+  padding: 20px;
+}
+
+.qr-controls {
+  text-align: center;
+  margin-top: 16px;
+}
+
 /* Progress Section */
 .progress-bar-container {
   background: var(--border-color);

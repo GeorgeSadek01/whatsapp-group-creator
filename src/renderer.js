@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const createGroupButton = document.getElementById('createGroupButton');
   const logEntries = document.getElementById('logEntries');
   const qrCode = document.getElementById('qrCode');
+  const qrLoading = document.getElementById('qrLoading');
+  const retryQrButton = document.getElementById('retryQrButton');
   
   // Log function
   function addLog(message, type = 'info') {
@@ -28,7 +30,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logEntries) {
       const entry = document.createElement('div');
       entry.className = `log-entry ${type}`;
-      entry.innerHTML = `<span class="timestamp">[${new Date().toLocaleTimeString()}]</span>${message}`;
+      
+      let icon = 'ℹ️';
+      if (type === 'error') icon = '❌';
+      if (type === 'success') icon = '✅';
+      if (type === 'warning') icon = '⚠️';
+      if (type === 'processing') icon = '⏳';
+      if (type === 'qr-code') icon = '📱';
+      if (type === 'ready') icon = '✅';
+      if (type === 'authenticated') icon = '🔐';
+      
+      entry.innerHTML = `<span class="timestamp">[${new Date().toLocaleTimeString()}]</span> <span class="icon">${icon}</span> ${message}`;
       logEntries.appendChild(entry);
       entry.scrollIntoView({ behavior: 'smooth' });
     }
@@ -43,6 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.type === 'qr-code' && data.qrDataUrl) {
       if (qrCode) {
         qrCode.innerHTML = `<img src="${data.qrDataUrl}" alt="WhatsApp QR Code" style="max-width: 256px;">`;
+        qrCode.style.display = 'block';
+        if (qrLoading) qrLoading.style.display = 'none';
         document.getElementById('qrSection').style.display = 'block';
       }
     }
@@ -56,6 +70,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
+  // Retry QR Button
+  if (retryQrButton) {
+    retryQrButton.addEventListener('click', async () => {
+      addLog('Retrying WhatsApp initialization...', 'info');
+      if (qrCode) qrCode.style.display = 'none';
+      if (qrLoading) qrLoading.style.display = 'block';
+      
+      try {
+        const result = await electronAPI.retryWhatsApp();
+        if (!result.success) {
+          addLog(`Retry failed: ${result.error}`, 'error');
+        }
+      } catch (error) {
+        addLog(`Retry error: ${error.message}`, 'error');
+      }
+    });
+  }
+
   // Error listener
   electronAPI.onError((error) => {
     console.error('Error:', error);

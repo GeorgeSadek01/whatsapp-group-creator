@@ -50,14 +50,30 @@ class WhatsAppService {
         const isRegistered = await this.verifyNumber(number);
         if (isRegistered) {
           results.verified.push(number);
-          progressCallback({ status: 'verified', number });
+          progressCallback({ 
+            status: 'verified', 
+            number,
+            current: i + 1,
+            total: numbers.length
+          });
         } else {
           results.unregistered.push(number);
-          progressCallback({ status: 'unregistered', number });
+          progressCallback({ 
+            status: 'unregistered', 
+            number,
+            current: i + 1,
+            total: numbers.length
+          });
         }
       } catch (err) {
         results.errors.push({ number, error: err.message });
-        progressCallback({ status: 'error', number, error: err.message });
+        progressCallback({ 
+          status: 'error', 
+          number, 
+          error: err.message,
+          current: i + 1,
+          total: numbers.length
+        });
       }
 
       // Rate limiting
@@ -127,10 +143,21 @@ class WhatsAppService {
         try {
           await groupChat.addParticipants([participant]);
           results.successful.push(participant);
-          progressCallback({ status: 'added', participant });
+          progressCallback({ 
+            status: 'added', 
+            participant,
+            current: i + 1,
+            total: participants.length
+          });
         } catch (err) {
           results.failed.push({ participant, error: err.message });
-          progressCallback({ status: 'failed', participant, error: err.message });
+          progressCallback({ 
+            status: 'failed', 
+            participant, 
+            error: err.message,
+            current: i + 1,
+            total: participants.length
+          });
         }
 
         // Rate limiting between additions

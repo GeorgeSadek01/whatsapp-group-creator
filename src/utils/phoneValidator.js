@@ -4,19 +4,19 @@
  */
 
 /**
- * Egyptian mobile operators and their prefixes
+ * Egyptian mobile operators and their prefixes (without the trunk prefix 0)
  */
 const EGYPTIAN_OPERATORS = {
-  '010': 'Vodafone',
-  '011': 'Etisalat',
-  '012': 'Orange',
-  '015': 'WE (Telecom Egypt)'
+  '10': 'Vodafone',
+  '11': 'Etisalat',
+  '12': 'Orange',
+  '15': 'WE (Telecom Egypt)'
 };
 
 /**
  * Clean and validate Egyptian phone numbers
  * @param {string|number} rawNumber - Raw phone number input
- * @returns {string|null} - Cleaned number in format 201xxxxxxxx or null if invalid
+ * @returns {string|null} - Cleaned number in format 20 + 10-digit-local or null if invalid
  */
 function cleanEgyptianNumber(rawNumber) {
   if (!rawNumber) return null;
@@ -26,10 +26,10 @@ function cleanEgyptianNumber(rawNumber) {
   
   // Handle different Egyptian number formats
   if (clean.startsWith('00201')) {
-    // Format: 00201xxxxxxxx -> 201xxxxxxxx
+    // Format: 00201xxxxxxxxx -> 201xxxxxxxxx (remove 00)
     clean = clean.substring(2);
-  } else if (clean.startsWith('201')) {
-    // Format: 201xxxxxxxx (already correct)
+  } else if (clean.startsWith('201') && clean.length === 12) {
+    // Format: 201xxxxxxxxx (already correct)
     clean = clean;
   } else if (clean.startsWith('01') && clean.length === 11) {
     // Format: 01xxxxxxxxx -> 201xxxxxxxxx
@@ -43,10 +43,11 @@ function cleanEgyptianNumber(rawNumber) {
   }
   
   // Validate Egyptian number format: 201xxxxxxxxx (12 digits total)
-  if (clean.length === 12 && clean.startsWith('201')) {
-    // Validate the third digit (Egyptian mobile operators: 0, 1, 2, 5)
-    const thirdDigit = clean.charAt(2);
-    if (['0', '1', '2', '5'].includes(thirdDigit)) {
+  // Structure: 20 (Egypt code) + 1X (operator: 10, 11, 12, 15) + 8 remaining digits
+  if (clean.length === 12 && clean.startsWith('20')) {
+    // Extract operator code (2 digits after country code, e.g., "10", "11", "12", "15")
+    const operatorCode = clean.substring(2, 4);
+    if (['10', '11', '12', '15'].includes(operatorCode)) {
       return clean;
     }
   }
@@ -60,32 +61,18 @@ function cleanEgyptianNumber(rawNumber) {
  * @returns {object|null} - Operator info or null if invalid
  */
 function getOperatorInfo(cleanNumber) {
-  if (!cleanNumber || cleanNumber.length !== 12 || !cleanNumber.startsWith('201')) {
+  if (!cleanNumber || cleanNumber.length !== 12 || !cleanNumber.startsWith('20')) {
     return null;
   }
   
-  const operatorCode = cleanNumber.substring(2, 5);
+  const operatorCode = cleanNumber.substring(2, 4);
   const operatorName = EGYPTIAN_OPERATORS[operatorCode];
   
-  if (operatorName) {
-    return {
-      code: operatorCode,
-      name: operatorName,
-      displayNumber: `+${cleanNumber}`
-    };
-  }
-  
-  // If no specific operator found but valid Egyptian number, return generic info
-  const thirdDigit = cleanNumber.charAt(2);
-  if (['0', '1', '2', '5'].includes(thirdDigit)) {
-    return {
-      code: `01${thirdDigit}`,
-      name: `Egyptian Mobile (01${thirdDigit})`,
-      displayNumber: `+${cleanNumber}`
-    };
-  }
-  
-  return null;
+  return operatorName ? {
+    code: `0${operatorCode}`, // Display with trunk prefix for readability
+    name: operatorName,
+    displayNumber: `+${cleanNumber}`
+  } : null;
 }
 
 /**
