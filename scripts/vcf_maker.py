@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from typing import Iterable, Dict, List, Optional, Callable
+import threading
 
 
 def escape_vcard_value(value: str) -> str:
@@ -144,7 +145,7 @@ def count_csv_rows(path: str) -> int:
         return sum(1 for _ in reader)
 
 
-def write_vcards_stream(path: str, out_path: str, name_field: str, phone_fields: List[str], phone_labels: Optional[List[str]] = None, postfix: str = "", progress: Optional[Callable[[int, int], None]] = None) -> int:
+def write_vcards_stream(path: str, out_path: str, name_field: str, phone_fields: List[str], phone_labels: Optional[List[str]] = None, prefix: str = "", postfix: str = "", progress: Optional[Callable[[int, int], None]] = None, stop_event: Optional[threading.Event] = None) -> int:
     """
     Stream contacts from CSV at `path` and write vCards to `out_path`.
     `phone_fields` is a list of CSV column names to pull phone numbers from.
@@ -158,6 +159,9 @@ def write_vcards_stream(path: str, out_path: str, name_field: str, phone_fields:
     with open(path, newline="", encoding="utf-8") as f_in, open(out_path, "w", encoding="utf-8", newline="") as vcf:
         reader = csv.DictReader(f_in)
         for i, row in enumerate(reader, start=1):
+            if stop_event and stop_event.is_set():
+                # Interrupted by GUI cancel
+                break
             name = (row.get(name_field) or "").strip()
             phones = []
             for idx, pf in enumerate(phone_fields):
@@ -170,7 +174,14 @@ def write_vcards_stream(path: str, out_path: str, name_field: str, phone_fields:
                 if progress:
                     progress(i, total)
                 continue
-            full_name = (name + postfix).strip() if postfix else name
+            parts = []
+            if prefix:
+                parts.append(prefix.strip())
+            if name:
+                parts.append(name)
+            if postfix:
+                parts.append(postfix.strip())
+            full_name = " ".join(parts).strip()
             vcf.write(format_vcard(full_name, phones))
             written += 1
             if progress:
@@ -183,6 +194,7 @@ def parse_args():
     p.add_argument("--input", "-i", default="contacts.csv", help="Input CSV file path")
     p.add_argument("--output", "-o", default=None, help="Output VCF file path (default: same dir as input, inputname.vcf)")
     p.add_argument("--postfix", "-p", default="", help="Optional postfix to append to each name")
+    p.add_argument("--prefix", default="", help="Optional prefix to prepend to each name")
     p.add_argument("--name-field", default="name", help="CSV column name for contact name")
     p.add_argument("--phone-field", default="phone", help="CSV column name for phone number (deprecated). Use --phone-fields for multiple columns")
     p.add_argument("--phone-fields", default=None, help="Comma-separated CSV column names to use for phone numbers")
@@ -229,7 +241,7 @@ def main():
     if args.phone_labels:
         phone_labels = [s.strip() for s in args.phone_labels.split(',') if s.strip()]
 
-    written = write_vcards_stream(input_path, output_path, name_field, valid_phone_fields, phone_labels, args.postfix, progress=None)
+    written = write_vcards_stream(input_path, output_path, name_field, valid_phone_fields, phone_labels, args.prefix, args.postfix, progress=None)
     print(f"Wrote {written} vCards to {output_path}")
 
 

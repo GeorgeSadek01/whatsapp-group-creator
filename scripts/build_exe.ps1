@@ -15,8 +15,9 @@ python -m pip install pyinstaller | Write-Host
 # --add-data: include vcf_maker.py next to the exe in the bundle (Windows uses ';' separator)
 $addData = "scripts\vcf_maker.py;."
 
-Write-Host "Running PyInstaller..."
-pyinstaller --noconfirm --onefile --windowed --name $Name --add-data $addData $Entry
+Write-Host "Running PyInstaller via python -m PyInstaller..."
+# Use python -m PyInstaller so we don't depend on Scripts being on PATH
+python -m PyInstaller --noconfirm --onefile --windowed --name $Name --add-data "$addData" $Entry
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Build succeeded. Output in dist\$Name.exe"

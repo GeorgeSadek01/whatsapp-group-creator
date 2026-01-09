@@ -19,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VCF_SCRIPT = os.path.join(SCRIPT_DIR, "vcf_maker.py")
 
 
-def run_vcf_maker(input_path, output_path, name_field, phone_fields, phone_labels, postfix, log_widget, run_button, root, progressbar):
+def run_vcf_maker(input_path, output_path, name_field, phone_fields, phone_labels, prefix, postfix, log_widget, run_button, root, progressbar, stop_event=None):
     def target():
         run_button.config(state=tk.DISABLED)
         progressbar['value'] = 0
@@ -41,10 +41,15 @@ def run_vcf_maker(input_path, output_path, name_field, phone_fields, phone_label
                         pct = 0
                     progressbar['value'] = pct
                     log_widget.insert(tk.END, f"Processed {processed}/{total}\n")
+                    try:
+                        # update status label with row counts
+                        status_var.set(f"Rows: {total} — processed {processed}")
+                    except Exception:
+                        pass
                     log_widget.see(tk.END)
                 root.after(1, ui_update)
 
-            written = vcf_maker.write_vcards_stream(input_path, output_path, name_field, phone_fields, phone_labels, postfix, progress_cb)
+            written = vcf_maker.write_vcards_stream(input_path, output_path, name_field, phone_fields, phone_labels, prefix, postfix, progress_cb, stop_event)
 
             def on_done():
                 log_widget.insert(tk.END, f"\nFinished. {written} vCards written to {output_path}\n")
@@ -88,13 +93,24 @@ def browse_output(entry_widget):
 def load_csv_preview(path: str):
     # return headers and up to first 5 rows as list of dicts
     rows = []
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        headers = reader.fieldnames or []
-        for i, r in enumerate(reader):
-            if i >= 5:
+    # try common encodings
+    encodings = ["utf-8", "utf-8-sig", "latin-1"]
+    headers = []
+    for enc in encodings:
+        try:
+            with open(path, newline="", encoding=enc) as f:
+                reader = csv.DictReader(f)
+                headers = reader.fieldnames or []
+                for i, r in enumerate(reader):
+                    if i >= 5:
+                        break
+                    rows.append(r)
+            if headers:
                 break
-            rows.append(r)
+        except Exception:
+            rows = []
+            headers = []
+            continue
     return headers, rows
 
 
@@ -179,7 +195,8 @@ def build_gui():
 
     # Name and phone field selectors (populated from CSV header)
     tk.Label(frame, text="Name field:").grid(row=3, column=0, sticky=tk.W)
-    name_field_combo = ttk.Combobox(frame, values=[], width=25, state='readonly')
+    # make combobox editable so users can type a custom column name
+    name_field_combo = ttk.Combobox(frame, values=[], width=25, state='normal')
     name_field_combo.grid(row=3, column=1, sticky=tk.W)
 
     tk.Label(frame, text="Phone fields:").grid(row=3, column=1, sticky=tk.E, padx=(0, 120))
@@ -224,6 +241,11 @@ def build_gui():
     preview = ttk.Treeview(frame, columns=("cols"), show='headings', height=5)
     preview.grid(row=4, column=1, columnspan=2, pady=(6, 0), sticky=tk.NSEW)
 
+    # Prefix (optional)
+    tk.Label(frame, text="Prefix:").grid(row=5, column=0, sticky=tk.W)
+    prefix_entry = tk.Entry(frame, width=60)
+    prefix_entry.grid(row=5, column=1, padx=6, sticky=tk.W)
+
     # Log area
     tk.Label(frame, text="Log:").grid(row=6, column=0, sticky=tk.NW)
     log = scrolledtext.ScrolledText(frame, height=8, state=tk.DISABLED)
@@ -238,6 +260,64 @@ def build_gui():
     frame.grid_rowconfigure(6, weight=1)
     frame.grid_columnconfigure(1, weight=1)
 
+    # Save / Load mapping buttons
+    def save_mapping():
+        mapping = {
+            'name_field': name_field_combo.get(),
+            'phone_fields': [phone_fields_listbox.get(i) for i in phone_fields_listbox.curselection()],
+            'phone_labels': phone_labels_entry.get(),
+            'prefix': prefix_entry.get(),
+            'postfix': postfix_entry.get(),
+            'output': output_entry.get()
+        }
+        p = filedialog.asksaveasfilename(title='Save mapping', defaultextension='.json', filetypes=[('JSON', '*.json')])
+        if p:
+            try:
+                import json
+                with open(p, 'w', encoding='utf-8') as f:
+                    json.dump(mapping, f, ensure_ascii=False, indent=2)
+                messagebox.showinfo('Saved', f'Mapping saved to {p}')
+            except Exception as e:
+                messagebox.showerror('Error', f'Could not save mapping: {e}')
+
+    def load_mapping():
+        p = filedialog.askopenfilename(title='Load mapping', filetypes=[('JSON', '*.json'), ('All', '*')])
+        if not p:
+            return
+        try:
+            import json
+            with open(p, 'r', encoding='utf-8') as f:
+                mapping = json.load(f)
+            if 'name_field' in mapping:
+                name_field_combo.set(mapping['name_field'])
+            if 'phone_fields' in mapping and isinstance(mapping['phone_fields'], list):
+                # select items in listbox
+                phone_fields_listbox.selection_clear(0, tk.END)
+                for val in mapping['phone_fields']:
+                    try:
+                        idx = phone_fields_listbox.get(0, tk.END).index(val)
+                        phone_fields_listbox.selection_set(idx)
+                    except ValueError:
+                        pass
+            if 'phone_labels' in mapping:
+                phone_labels_entry.delete(0, tk.END)
+                phone_labels_entry.insert(0, mapping['phone_labels'])
+            if 'prefix' in mapping:
+                prefix_entry.delete(0, tk.END)
+                prefix_entry.insert(0, mapping['prefix'])
+            if 'postfix' in mapping:
+                postfix_entry.delete(0, tk.END)
+                postfix_entry.insert(0, mapping['postfix'])
+            if 'output' in mapping:
+                output_entry.delete(0, tk.END)
+                output_entry.insert(0, mapping['output'])
+            messagebox.showinfo('Loaded', f'Mapping loaded from {p}')
+        except Exception as e:
+            messagebox.showerror('Error', f'Could not load mapping: {e}')
+
+    tk.Button(frame, text='Save mapping', command=save_mapping).grid(row=9, column=1, sticky=tk.W, pady=(6,0))
+    tk.Button(frame, text='Load mapping', command=load_mapping).grid(row=9, column=2, sticky=tk.W, pady=(6,0))
+
     def populate_preview(rows):
         # clear
         for c in preview.get_children():
@@ -246,15 +326,30 @@ def build_gui():
             return
         headers = list(rows[0].keys())
         preview['columns'] = headers
+        # compute column widths based on content (chars)
+        col_widths = {h: max(len(h), 10) for h in headers}
+        for r in rows:
+            for h in headers:
+                val = str(r.get(h, '') or '')
+                col_widths[h] = max(col_widths[h], len(val))
         for h in headers:
             preview.heading(h, text=h)
-            preview.column(h, width=120, anchor='w')
+            # set width in pixels approx (char*7)
+            preview.column(h, width=min(col_widths[h] * 7, 400), anchor='w')
         for r in rows:
             preview.insert('', tk.END, values=[r.get(h, '') for h in headers])
+
+    # status label for counts
+    status_var = tk.StringVar(value="Rows: 0")
+    status_lbl = tk.Label(frame, textvariable=status_var)
+    status_lbl.grid(row=5, column=2, sticky=tk.E)
+
+    stop_event = None
 
     def on_run():
         input_path = input_entry.get().strip() or "contacts.csv"
         output_path = output_entry.get().strip() or os.path.join(os.path.dirname(input_path) or '.', os.path.splitext(os.path.basename(input_path))[0] + '.vcf')
+        prefix = prefix_entry.get()
         postfix = postfix_entry.get()
         name_field = name_field_combo.get().strip() or (name_field_combo['values'][0] if name_field_combo['values'] else '')
         # collect selected phone fields
@@ -271,11 +366,27 @@ def build_gui():
             messagebox.showerror("Input not found", "Input CSV file does not exist.")
             return
 
-        run_vcf_maker(input_path, output_path, name_field, phone_fields, phone_labels, postfix, log, run_button, root, progress)
+        # create stop event and wire Cancel button
+        nonlocal stop_event
+        stop_event = threading.Event()
+        cancel_button.config(state=tk.NORMAL)
+
+        run_vcf_maker(input_path, output_path, name_field, phone_fields, phone_labels, prefix, postfix, log, run_button, root, progress, stop_event)
 
     run_button = tk.Button(frame, text="Run", width=12, command=on_run)
     run_button.grid(row=7, column=1, pady=10, sticky=tk.W)
     run_button.config(state=tk.DISABLED)
+
+    cancel_button = tk.Button(frame, text="Cancel", width=12, state=tk.DISABLED, command=lambda: cancel_run())
+    cancel_button.grid(row=7, column=2, pady=10, sticky=tk.W)
+
+    def cancel_run():
+        try:
+            if stop_event:
+                stop_event.set()
+                cancel_button.config(state=tk.DISABLED)
+        except Exception:
+            pass
 
     # If TkinterDnD not available, try to enable simple Windows native DnD (best-effort)
     if not DND_AVAILABLE and os.name == 'nt':
